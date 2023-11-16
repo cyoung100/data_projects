@@ -1,0 +1,93 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(here)
+```
+
+Alpha for all hypothesis will be 0.05
+
+```{r}
+bed_occupancy_analysis <- read_csv(here("clean_data/bed_occupancy.csv"))
+```
+
+```{r}
+sd_bed_occ <- bed_occupancy_analysis %>% 
+  filter(specialty_name == "All Specialties") %>% 
+  summarise(sd = sd(percentage_occupancy)) %>% 
+  pull(sd)
+```
+
+```{r}
+mean_bed_occ <- bed_occupancy_analysis %>% 
+  filter(specialty_name == "All Specialties") %>% 
+  summarise(mean = mean(percentage_occupancy)) %>% 
+  pull(mean)
+```
+
+```{r}
+bed_occupancy_analysis %>% 
+  select(year_quarter, specialty_name, percentage_occupancy) %>% 
+  filter(specialty_name == "All Specialties") %>% 
+  mutate(diff_from_mean = percentage_occupancy - mean_bed_occ) %>% 
+  mutate(greater_than_3_sd = abs(diff_from_mean) > (3 * sd_bed_occ)) %>% 
+  filter(greater_than_3_sd == TRUE)
+```
+
+percentage_occupancy = (sum(total_occupied_beddays) / sum(all_staffed_beddays)) * 100
+
+```{r}
+sd_mean_hb_bed_occ <- bed_occupancy_analysis %>% 
+  filter(specialty_name == "All Specialties") %>% 
+  group_by(year_quarter) %>% 
+  summarise(percentage_occupancy = 
+           (sum(total_occupied_beddays) / sum(all_staffed_beddays)) * 100) %>% 
+  summarise(sd = sd(percentage_occupancy)) %>% 
+  pull(sd)
+```
+
+```{r}
+bed_occupancy_analysis %>% 
+  select(year_quarter, specialty_name, percentage_occupancy, total_occupied_beddays, all_staffed_beddays) %>% 
+  filter(specialty_name == "All Specialties") %>% 
+  group_by(year_quarter) %>% 
+  summarise(percentage_occupancy = 
+           (sum(total_occupied_beddays) / sum(all_staffed_beddays)) * 100) %>% 
+  mutate(diff_from_mean = percentage_occupancy - mean_bed_occ) %>% 
+  mutate(greater_than_2point5_sd = abs(diff_from_mean) > (2.5 * sd_mean_hb_bed_occ)) %>% 
+  filter(greater_than_2point5_sd == TRUE)
+```
+
+```{r}
+sd_bed_occ_total <- bed_occupancy_analysis %>% 
+  filter(specialty_name == "All Specialties") %>% 
+  group_by(year_quarter) %>% 
+  summarise(total_occupied_beddays = sum(total_occupied_beddays)) %>% 
+  summarise(sd = sd(total_occupied_beddays)) %>% 
+  distinct() %>% 
+  pull(sd)
+```
+
+```{r}
+mean_bed_occ_total <- bed_occupancy_analysis %>% 
+  filter(specialty_name == "All Specialties") %>% 
+  group_by(year_quarter) %>% 
+  summarise(total_occupied_beddays = sum(total_occupied_beddays)) %>%
+  filter(total_occupied_beddays > 0) %>% 
+  summarise(mean = mean(total_occupied_beddays)) %>% 
+  pull(mean)
+```
+
+```{r}
+bed_occupancy_analysis %>% 
+  select(year_quarter, specialty_name, total_occupied_beddays) %>% 
+  filter(specialty_name == "All Specialties") %>% 
+  group_by(year_quarter) %>% 
+  summarise(total_occupied_beddays = sum(total_occupied_beddays)) %>%
+  mutate(diff_from_mean = total_occupied_beddays - mean_bed_occ_total, mean = mean_bed_occ_total) %>% 
+  mutate(greater_than_3_sd = abs(diff_from_mean) > (3 * sd_bed_occ_total)) %>% 
+  filter(greater_than_3_sd == TRUE)
+```

@@ -1,0 +1,36 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+bed_occupancy <- read_csv("../clean_data/bed_occupancy.csv")
+```
+
+```{r}
+bed_occupancy %>% 
+  filter(specialty_name == "All Specialties") %>% 
+  ggplot(aes(x = quarter_date, y = average_occupied_beds)) +
+  geom_line(aes(colour = hb)) 
+```
+
+```{r}
+bed_occupancy %>% 
+  group_by(specialty_name, quarter_date) %>% 
+  summarise(average_occupied_beds = sum(average_occupied_beds)) %>% 
+  ggplot(aes(x = quarter_date, y = average_occupied_beds)) +
+  geom_line(aes(colour = specialty_name)) 
+```
+
+```{r}
+bed_occupancy %>% 
+  filter(specialty_name == "All Specialties") %>% 
+  group_by(quarter) %>% 
+  
+```

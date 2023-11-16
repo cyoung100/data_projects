@@ -1,0 +1,122 @@
+---
+title: "Deprivation"
+output:
+  html_document:
+    df_print: paged
+---
+# Activity by Board of Treatment and Deprivation
+
+SIMD 
+https://www.opendata.nhs.scot/dataset/scottish-index-of-multiple-deprivation
+
+ScotGOv
+https://www.gov.scot/collections/scottish-index-of-multiple-deprivation-2020/
+
+"The Scottish Index of Multiple Deprivation is a relative measure of deprivation 
+across 6,976 small areas (called data zones). If an area is identified as 
+‘deprived’, this can relate to people having a low income but it can also mean 
+fewer resources or opportunities. SIMD looks at the extent to which an area is deprived across seven domains: income, employment, education, health, access to services, crime and housing."
+
+```{r warning=FALSE}
+library(tidyverse)
+```
+
+```{r message=FALSE, warning=FALSE}
+deprivation <- read_csv("../clean_data/deprivation_without_duplicates.csv")
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+head(deprivation)
+glimpse(deprivation)
+str(deprivation)
+skimr::skim(deprivation)
+```
+
+## AdmissionType, Quarter
+Line graph confirms similar trends across all departments.
+Apparent lower number of stays post 2020.
+```{r}
+admission_quarter <- deprivation %>% 
+  select(admission_type, year_quarter, stays) %>% 
+  group_by(admission_type, year_quarter) %>% 
+  summarise(total_stays = sum(stays)) %>% 
+  ungroup()
+
+admission_quarter %>% 
+  ggplot(aes(x = admission_type, y = total_stays, fill = admission_type)) +
+  geom_col()
+
+admission_quarter %>% 
+  ggplot(aes(x = year_quarter, y = total_stays,
+             colour = admission_type, group = admission_type)) +
+  geom_line() +
+  geom_point()
+```
+
+## SIMD, Quarter
+SIMD ranks data zones into quintiles, from most deprived (ranked 1) to least
+deprived (ranked 5).
+Line graph confirms similar trends across all SIMD quintiles.
+Apparent lower number of stays post 2020 for all groups.
+
+```{r}
+deprivation %>% 
+  select(simd, year_quarter, stays) %>%
+  group_by(simd, year_quarter) %>% 
+  summarise(total_stays = sum(stays)) %>%
+  ungroup() %>% 
+  ggplot(aes(x = year_quarter, y = total_stays,
+             colour = factor(simd), group = simd)) +
+  geom_line() +
+  geom_point() +
+  scale_y_continuous(limits = c(0, NA),
+                     labels = scales::comma) +
+  scale_colour_discrete(name = "SIMD") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "Stays by Scottish Index of Multiple Deprivation (SIMD)",
+    x = "\nQuarter ending",
+    y = "Total Number of Stays in Days\n")
+
+
+deprivation %>% 
+  select(simd, year_quarter, average_length_of_stay) %>%
+  group_by(simd, year_quarter) %>% 
+  summarise(mean_stays = mean(average_length_of_stay)) %>%
+  ungroup() %>% 
+  ggplot(aes(x = year_quarter, y = mean_stays,
+             colour = factor(simd), group = simd)) +
+  geom_line() +
+  geom_point() +
+  scale_y_continuous(limits = c(0, NA),
+                     labels = scales::comma) +
+  scale_colour_discrete(name = "SIMD") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "Average Length of Stays by SIMD",
+    x = "\nQuarter ending",
+    y = "Total Number of Stays in Days\n")
+```
+
+Length of stay
+```{r}
+# Mean length of stay
+# No clear trend.
+# Range is around 1 day
+deprivation %>% 
+  select(year_quarter, simd, average_length_of_stay) %>% 
+  group_by(year_quarter) %>% 
+  summarise(mean_stay = mean(average_length_of_stay, na.rm = TRUE)) %>% 
+  ungroup() %>%
+  ggplot(aes(x = year_quarter, y = mean_stay)) +
+  geom_col(fill = "seagreen") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "Mean Length of Stay",
+    x = "",
+    y = "Days")
+```
+

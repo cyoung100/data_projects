@@ -1,0 +1,119 @@
+---
+title: "Investigation: Age"
+output:
+  html_document:
+    df_print: paged
+---
+# Hospital Activity and Patient Demographics
+
+https://www.opendata.nhs.scot/dataset/inpatient-and-daycase-activity/resource/00c00ecc-b533-426e-a433-42d79bdea5d4
+
+# Activity by Board of Treatment, Age and Sex
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(infer)
+```
+
+```{r message=FALSE, warning=FALSE}
+age_sex <- read_csv("../clean_data/age_and_sex_without_duplicates.csv")
+```
+
+```{r eval=FALSE, include=FALSE}
+glimpse(age_sex)
+
+str(age_sex)
+
+skimr::skim(age_sex)
+```
+
+
+## Age
+
+```{r}
+# Number of stays by age
+age_sex %>% 
+  select(year_quarter, age_range, stays) %>% 
+  group_by(year_quarter, age_range) %>% 
+  summarise(stays_count =  sum(stays)) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = year_quarter, y = stays_count, colour = age_range, group = age_range)) +
+  geom_line() +
+  geom_point() +
+  scale_y_continuous(labels = scales::comma) +
+  scale_colour_discrete(name = "Age") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "Stays by Age",
+    x = "",
+    y = "Stays\n")
+```
+
+```{r}
+# Mean length of stay by age
+age_sex %>% 
+  select(year_quarter, age_range, average_length_of_stay) %>% 
+  group_by(year_quarter, age_range) %>% 
+  summarise(mean_stay =  mean(average_length_of_stay, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = year_quarter, y = mean_stay, colour = age_range, group = age_range)) +
+  geom_line() +
+  geom_point() +
+  scale_colour_discrete(name = "Age") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "Mean Length of Stay by Age",
+    x = "",
+    y = "Days\n")
+```
+
+```{r}
+age_sex %>% 
+  group_by(year) %>% 
+  summarise(stay_count = sum(stays)) %>% 
+  ggplot(aes(x = year, y = stay_count)) +
+  geom_col(fill = "steelblue") +
+  labs(title = "Number of Stays",
+       x = "",
+       y = "") + 
+  scale_y_continuous(limits = c(0, NA),
+                     labels = scales::label_number(
+                       scale_cut = scales::cut_short_scale())) +
+  theme_minimal(base_size = 14)
+```
+
+Increase in hospital stay length for over 80s
+```{r}
+age_sex_for_h_test <- age_sex %>%
+  filter(age_range == "80 and over") %>% 
+  select(average_length_of_stay, post_covid)
+
+# Boxplot
+age_sex_for_h_test %>% 
+  ggplot(aes(x = average_length_of_stay, y = post_covid, fill = post_covid)) +
+  geom_boxplot()
+
+# Set up null distriburtion
+null_dist_post_covid <- age_sex_for_h_test %>% 
+  specify(average_length_of_stay ~ post_covid) %>% 
+  hypothesise(null = "independence") %>% 
+  generate(reps = 1000, type = "permute") %>% 
+  calculate(stat = "diff in means", order = c(TRUE, FALSE))
+
+# Calculate the observed stat
+obs_stat_post_covid <- age_sex_for_h_test %>% 
+  specify(average_length_of_stay ~ post_covid) %>% 
+  calculate(stat = "diff in means", order = c(TRUE, FALSE))
+            
+# Visualise confidence interval 
+null_dist_winter %>% 
+  visualise() +
+  shade_p_value(obs_stat = obs_stat_post_covid, direction = "right")
+
+# Find p-value
+pvalue_winter <- null_dist_winter %>% 
+  get_p_value(obs_stat = obs_stat_post_covid, direction = "right")
+pvalue_winter
+```
+

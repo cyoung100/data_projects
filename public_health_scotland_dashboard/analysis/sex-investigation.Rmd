@@ -1,0 +1,330 @@
+---
+title: "Analysis: Sex"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Hospital Activity and Patient Demographics
+
+https://www.opendata.nhs.scot/dataset/inpatient-and-daycase-activity/resource/00c00ecc-b533-426e-a433-42d79bdea5d4
+
+# Activity by Board of Treatment, Age and Sex
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(infer)
+```
+
+```{r message=FALSE, warning=FALSE}
+age_sex <- read_csv("../clean_data/age_and_sex_without_duplicates.csv")
+```
+
+```{r eval=FALSE, include=FALSE}
+glimpse(age_sex)
+
+str(age_sex)
+
+skimr::skim(age_sex)
+```
+
+# Sex
+```{r message=FALSE}
+# Number of "stays" (total number of days patients spend in hospital during a continuous inpatient stay)
+# Consistently Female > Male by around 50,000 per quarter
+age_sex %>%
+  select(year_quarter, sex, stays) %>%
+  group_by(year_quarter, sex) %>%
+  summarise(stays_count = sum(stays)) %>%
+  ungroup() %>%
+  ggplot(aes(x = year_quarter, y = stays_count, colour = sex, group = sex)) +
+  geom_line() +
+  geom_point() +
+  scale_y_continuous(limits = c(0, NA),
+                     labels = scales::label_number(
+                       scale_cut = scales::cut_short_scale())) +
+  theme_minimal(default_font_base_size) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "right") +
+  labs(title = "Number of Stays in Hospital",
+       x = "",
+       y = "Total Number of Stays\n",
+       colour = "")
+
+# Mean length of stay
+# No clear trend...maybe Female > Male on average
+# Range is small
+age_sex %>% 
+  select(year_quarter, sex, average_length_of_stay) %>% 
+  group_by(year_quarter, sex) %>% 
+  summarise(mean_stay = mean(average_length_of_stay, na.rm = TRUE)) %>% 
+  ungroup() %>%
+  ggplot(aes(x = year_quarter, y = mean_stay,
+             group = sex, colour = sex)) +
+  geom_line() +
+  geom_point() +
+  scale_y_continuous(limits = c(0, NA)) +
+  theme_minimal(base_size = default_font_base_size) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "right") +
+  labs(title = "Length of Stay",
+       x = "",
+       y = "Average Number of Days\n",
+       colour = "")
+```
+
+# Question 1: To what extent are the ‘winter crises’ reported by the media real?
+
+```{r}
+age_sex %>% 
+  group_by(winter) %>% 
+  summarise(mean_stays = mean(stays, na.rm = TRUE),
+            mean_length_of_stay = mean(average_length_of_stay, na.rm = TRUE))
+```
+Doesn't look like a significant difference.
+
+### HYPOTHESIS TESTING
+
+h0: the number of stays (both sexes total) is not significantly greater in winter quarters relative to non-winter quarters
+h1: the number of stays is greater in winter quarters
+
+```{r}
+# Boxplot
+age_sex %>% 
+  ggplot(aes(x = stays, y = winter, fill = winter)) +
+  geom_boxplot()
+
+# Set up null distriburtion
+null_dist_winter <- age_sex %>% 
+  specify(stays ~ winter) %>% 
+  hypothesise(null = "independence") %>% 
+  generate(reps = 1000, type = "permute") %>% 
+  calculate(stat = "diff in means", order = c(TRUE, FALSE))
+
+# Calculate the observed stat
+obs_stat_winter <- age_sex %>% 
+  specify(stays ~ winter) %>% 
+  calculate(stat = "diff in means", order = c(TRUE, FALSE))
+            
+# Visualise confidence interval 
+null_dist_winter %>% 
+  visualise() +
+  shade_p_value(obs_stat = obs_stat_winter, direction = "right")
+
+# Find p-value
+pvalue_winter <- null_dist_winter %>% 
+  get_p_value(obs_stat = obs_stat_winter, direction = "right")
+pvalue_winter
+
+```
+With a p-value around 0.25, we fail to reject the null hypothesis.
+The number of hospital stays is, on average, greater in winter, but not significantly so.
+
+
+# Question 2: How has the Covid-19 pandemic affected provision of acute care in Scotland?
+- Demographic: Who is most affected by this issue? (Who should be targeted with efforts?)
+
+## Overall
+```{r}
+age_sex %>% 
+  group_by(post_covid) %>% 
+  summarise(mean_stays = mean(stays, na.rm = TRUE),
+            mean_length_of_stay = mean(average_length_of_stay, na.rm = TRUE))
+```
+Drop in the number of stays....looks significant.
+Increase in length of stay....significant? Doubtful.
+
+*Hypthesis Test - mean stays*
+h0: There is no significant decrease post-covid in the overall number of stays in hospital.
+h1: There are significantly fewer stays in hospital post-covid.
+```{r}
+age_sex %>% 
+  ggplot(aes(x = stays, y = post_covid, fill = post_covid)) +
+  geom_boxplot()
+
+null_distribution <- age_sex %>%
+  specify(response = stays, explanatory = post_covid) %>% 
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c(TRUE, FALSE))
+
+observed_stat <- age_sex %>% 
+  specify(stays ~ post_covid) %>% 
+  calculate(stat= "diff in means", order = c(TRUE, FALSE))
+
+observed_stat
+
+null_distribution %>% 
+  visualise(bins = 30) +
+  shade_p_value(obs_stat = observed_stat, direction = "left")
+
+null_distribution %>% 
+  get_p_value(obs_stat = observed_stat, direction = "left")
+```
+*Very small p-value leads us to reject the null hypothesis.*
+*There are significantly fewer stays in hospital post-covid.*  Why?
+
+*Hypthesis Test - mean length of stays*
+h0: There is no significant increase post-covid in the overall length of stays in hospital.
+h1: Stays in hospital are significantly longer post-covid.
+```{r}
+age_sex %>% 
+  ggplot(aes(x = average_length_of_stay, y = post_covid, fill = post_covid)) +
+  geom_boxplot()
+
+null_distribution <- age_sex %>%
+  specify(response = average_length_of_stay, explanatory = post_covid) %>% 
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c(TRUE, FALSE))
+
+observed_stat <- age_sex %>% 
+  specify(average_length_of_stay ~ post_covid) %>% 
+  calculate(stat= "diff in means", order = c(TRUE, FALSE))
+
+observed_stat
+
+null_distribution %>% 
+  visualise(bins = 30) +
+  shade_p_value(obs_stat = observed_stat, direction = "right")
+
+null_distribution %>% 
+  get_p_value(obs_stat = observed_stat, direction = "right")
+```
+*Small p-value (approx 0.005) leads us to reject the null hypothesis.*
+*Stays in hospital are significantly longer post-covid.*
+*It should be noted that this statistical significance translates as around 3 hours extra, on average*
+
+
+
+
+## Post-covid changes of different sexes
+```{r}
+age_sex %>% 
+  group_by(sex, post_covid) %>% 
+  summarise(mean_stays = mean(stays, na.rm = TRUE),
+            mean_length_of_stay = mean(average_length_of_stay, na.rm = TRUE))
+```
+Post-covid, the number of stays in both groups has decreased by a lot. Has one sex been affected more than the other?
+Post-covid, the length of stays in both groups has increased by a small amount.  Has one sex been affected more than the other?
+
+```{r message=FALSE, warning=FALSE}
+# Wrangling data set
+male_stays <- age_sex %>% 
+  filter(sex == "Male") %>% 
+  rename(male_stays = stays,
+         average_length_of_male_stay = average_length_of_stay) %>% 
+  group_by(year_quarter, hb, admission_type, age, winter, post_covid) %>% 
+  summarise(male_stays = sum(male_stays),
+            average_length_of_male_stay = sum(average_length_of_male_stay)) %>% 
+  ungroup() %>% 
+  mutate(id = str_c(year_quarter, hb, admission_type, age))
+
+female_stays <- age_sex %>%
+  filter(sex == "Female") %>%
+  rename(female_stays = stays,
+         average_length_of_female_stay = average_length_of_stay) %>%
+  group_by(year_quarter, hb, admission_type, age, winter, post_covid) %>% 
+  summarise(female_stays = sum(female_stays),
+            average_length_of_female_stay = sum(average_length_of_female_stay)) %>% 
+  ungroup() %>% 
+  mutate(id = str_c(year_quarter, hb, admission_type, age))
+
+age_sex_stay_deltas <- full_join(male_stays, female_stays, by = "id") %>%
+  mutate(
+    female_stays = case_when(female_stays > 0 ~ female_stays,
+      .default = 0
+    ),
+    average_length_of_female_stay =
+      case_when(average_length_of_female_stay > 0 ~ average_length_of_female_stay,
+        .default = 0
+      ),
+    male_stays = case_when(male_stays > 0 ~ male_stays,
+      .default = 0
+    ),
+    average_length_of_male_stay =
+      case_when(average_length_of_male_stay > 0 ~ average_length_of_male_stay,
+        .default = 0
+      )
+  ) %>%
+  rename(
+    winter = winter.x,
+    post_covid = post_covid.x
+  ) %>%
+  mutate(winter = case_when(winter == TRUE ~ TRUE,
+    winter == FALSE ~ FALSE,
+    .default = winter.y
+  )) %>%
+  mutate(post_covid = case_when(post_covid == TRUE ~ TRUE,
+    post_covid == FALSE ~ FALSE,
+    .default = post_covid.y
+  )) %>%
+  mutate(
+    more_female_stays = female_stays - male_stays,
+    females_stay_longer = average_length_of_female_stay - average_length_of_male_stay
+  ) %>%
+  select(more_female_stays, females_stay_longer, winter, post_covid)
+```
+
+
+### Number of hospital stays by sex pre/post covid
+Hypothesis test:
+h0: There is no significant change post-covid in the difference between the number of male and female stays in hospital.
+h1: There is a significant change post-covid in the difference between the number of male and female stays in hospital.
+```{r}
+age_sex_stay_deltas %>% 
+  ggplot(aes(x = more_female_stays, y = post_covid, fill = post_covid)) +
+  geom_boxplot()
+
+null_distribution <- age_sex_stay_deltas %>%
+  specify(response = more_female_stays, explanatory = post_covid) %>% 
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c(TRUE, FALSE))
+
+observed_stat <- age_sex_stay_deltas %>% 
+  specify(more_female_stays ~ post_covid) %>% 
+  calculate(stat= "diff in means", order = c(TRUE, FALSE))
+
+observed_stat
+
+null_distribution %>% 
+  visualise(bins = 30) +
+  shade_p_value(obs_stat = observed_stat, direction = "both")
+
+null_distribution %>% 
+  get_p_value(obs_stat = observed_stat, direction = "both")
+```
+*p in region of 0.3 so fail to reject the null hypothesis*
+*There is no significant change post-covid in the difference between the number of male and female stays in hospital.*
+
+### Length of hospital stays by sex pre/post covid
+Hypothesis test 2:
+h0: There is no significant change post-covid in the difference between the length of stays of men and women staying in hospital.
+h1: There is a significant change post-covid in the difference between the length of stays of men and women staying in hospital.
+
+```{r}
+age_sex_stay_deltas %>% 
+  ggplot(aes(x = females_stay_longer, y = post_covid, fill = post_covid)) +
+  geom_boxplot()
+
+null_distribution <- age_sex_stay_deltas %>%
+  specify(response = females_stay_longer, explanatory = post_covid) %>% 
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c(TRUE, FALSE))
+
+observed_stat <- age_sex_stay_deltas %>% 
+  specify(females_stay_longer ~ post_covid) %>% 
+  calculate(stat= "diff in means", order = c(TRUE, FALSE))
+
+observed_stat
+
+null_distribution %>% 
+  visualise(bins = 30) +
+  shade_p_value(obs_stat = observed_stat, direction = "both")
+
+null_distribution %>% 
+  get_p_value(obs_stat = observed_stat, direction = "both")
+```
+*p in the region of 0.8 so fail to reject the null hyposthesis*
+*There is no significant change post-covid in the difference between the length of stays of men and women.*
